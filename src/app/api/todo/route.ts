@@ -1,29 +1,48 @@
-import Database from "better-sqlite3";
+// app/api/tasks/route.ts
 
-const db = new Database("./database.db");
+import { NextResponse } from "next/server";
+import sqlite3 from "sqlite3";
+const sqlite = sqlite3.verbose();
+import { open } from "sqlite";
+
+// Connect to the SQLite database
+const dbPromise = open({ filename: "sqlite.db", driver: sqlite3.Database });
 
 export async function GET() {
-    const todo = db.prepare("SELECT * FROM todo").all();
-    return Response.json(todo);
+  const db = await dbPromise;
+  const tasks = await db.all("SELECT * FROM todo");
+  return NextResponse.json(tasks); // Return tasks from the database
 }
 
 export async function POST(request: Request) {
-    try {
-        const { task } = await request.json();
+  const { title } = await request.json(); // Get title from the request body
+  const db = await dbPromise;
 
-        if (!task || task.trim() === "") {
-            return new Response(JSON.stringify({ error: "Task cannot be empty" }), { status: 400 });
-        }
+  const result = await db.run(
+    "INSERT INTO todo (title, isdone, createdat) VALUES (?, ?, ?)",
+    title,
+    0,
+    new Date().toISOString() // Add current timestamp
+  );
 
-        const stmt = db.prepare("INSERT INTO todo (task) VALUES (?)");
-        const result = stmt.run(task);
+  const newTask = await db.get("SELECT * FROM todo WHERE id = ?", result.lastID);
+  return NextResponse.json(newTask); // Return the newly created task
+}
 
-        return new Response(
-            JSON.stringify({ id: result.lastInsertRowid, task }),
-            { status: 201, headers: { "Content-Type": "application/json" } }
-        );
-    } catch (error) {
-        console.error(error);
-        return new Response(JSON.stringify({ error: "Failed to save task" }), { status: 500 });
-    }
+export async function PUT(request: Request) {
+  const { id, title } = await request.json(); // Get id and title from the request body
+  const db = await dbPromise;
+
+  await db.run("UPDATE todo SET title = ? WHERE id = ?", title, id);
+
+  const updatedTask = await db.get("SELECT * FROM todo WHERE id = ?", id);
+  return NextResponse.json(updatedTask); // Return the updated task
+}
+
+export async function DELETE(request: Request) {
+  const { id } = await request.json(); // Get id from the request body
+  const db = await dbPromise;
+
+  await db.run("DELETE FROM todo WHERE id = ?", id);
+  return NextResponse.json({ success: true }); // Return success response
 }
